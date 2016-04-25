@@ -29,6 +29,6 @@ every made stand alone); the other files were unpacked from `otto.zip`
 for ease of reference.
 
 Released under the GNU GPL v2, a copy of which can be found in 
-[copying](copying).
+[COPYING](COPYING).
 
 NOTE: more modern iMatix projects use other, more modern, build processes.
