@@ -1,0 +1,581 @@
+#! /usr/bin/perl
+#============================================================================*
+#                                                                            *
+#   otto        Build-script generator                                       *
+#                                                                            *
+#   Written:    96/03/27   iMatix <otto@imatix.com>                          *
+#   Revised:    98/01/07                                                     *
+#                                                                            *
+#   Copyright (c) 1996-98 iMatix                                             *
+#                                                                            *
+#   This program is free software; you can redistribute it and/or modify     *
+#   it under the terms of the GNU General Public License as published by     *
+#   the Free Software Foundation; either version 2 of the License, or        *
+#   (at your option) any later version.                                      *
+#                                                                            *
+#   This program is distributed in the hope that it will be useful,          *
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of           *
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            *
+#   GNU General Public License for more details.                             *
+#                                                                            *
+#   You should have received a copy of the GNU General Public License        *
+#   along with this program; if not, write to the Free Software              *
+#   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.                *
+#============================================================================*
+
+require 'otto.fmt';                     #   Include output formatting
+require 'otto.d';                       #   Include dialog interpreter
+
+
+##########################   INITIALISE THE PROGRAM   #########################
+
+sub initialise_the_program
+{
+    #   Prepare standard insertion symbols
+    ($sec, $min, $hour, $day, $month, $year) = localtime;
+    $date    = sprintf ("%02d/%02d/%02d", $year, $month + 1, $day);
+    $time    = sprintf ("%2d:%02d:%02d", $hour, $min, $sec);
+    $version = "v2.2";
+    $title   = "Application";
+
+    print "Otto - a build-script generator $version\n";
+    print "Written by Pieter Hintjens <ph\@imatix.com>\n";
+    print "Copyright (c) 1996-98 iMatix - http://www.imatix.com\n\n";
+    $me  = "otto";                      #   For error messages
+    $ext = ".txt";                      #   Default argument file extension
+
+    if (@ARGV > 0) {                    #   1 or more arguments in @ARGV?
+        $the_next_event = $ok_event;
+        $next_arg = 0;                  #   Arguments start at 0
+    }
+    else {
+        print "syntax: $me <filename>...\n";
+        $the_next_event = $error_event;
+    }
+}
+
+
+#########################   INITIALISE PROGRAM DATA   #########################
+
+sub initialise_program_data
+{
+    #   These are the systems that we support - otto.fmt must handle each
+    #   command block for each system.  Otherwise, otto does not have any
+    #   further specific code for the possible systems.
+    push (@systems, "unix");
+    push (@systems, "msdos");
+    push (@systems, "vms");
+    push (@systems, "os2");
+    push (@systems, "makefile");
+
+    #   These are system variations
+    $variation {"msmake"} = "makefile";    #   Makefile for MS-DOS
+    while (($system) = each %variation) {
+        push (@systems, $system);
+    }
+
+    #   We specify default output filenames per system
+    $default {"unix"}     = "build";
+    $default {"msdos"}    = "build.bat";
+    $default {"vms"}      = "build.txt";
+    $default {"os2"}      = "build.cmd";
+    $default {"turboc"}   = "buildtc.bat";
+    $default {"msvc"}     = "buildms.bat";
+    $default {"makefile"} = "Makefile";
+    $default {"msmake"}   = "msmake";
+
+    #   These are the preprocessor keywords that we recognise
+    foreach $system (@systems) {
+        $keyword {$system} = $system_specific_event;
+        $systems {$system} = 1;         #   Flag system is known
+    }
+    $keyword {"!!"}       = $comment_event;
+    $keyword {"append"}   = $append_event;
+    $keyword {"call"}     = $call_event;
+    $keyword {"close"}    = $close_event;
+    $keyword {"compile"}  = $compile_event;
+    $keyword {"copy"}     = $copy_event;
+    $keyword {"echo"}     = $echo_event;
+    $keyword {"delete"}   = $delete_event;
+    $keyword {"install"}  = $install_event;
+    $keyword {"library"}  = $library_event;
+    $keyword {"link"}     = $link_event;
+    $keyword {"output"}   = $output_event;
+    $keyword {"pause"}    = $pause_event;
+    $keyword {"rename"}   = $rename_event;
+    $keyword {"require"}  = $require_event;
+    $keyword {"title"}    = $title_event;
+
+    #   We log all errors to otto.lst
+    unless (open (ERRORS, ">otto.lst")) {
+        print "$me E: can't create otto.lst: $!\n";
+        &raise_exception ($exception_event);
+    }
+    $have_errors = 0;                   #   No errors detected so far
+}
+
+
+#########################   GET NEXT ARGUMENT VALUE   #########################
+
+sub get_next_argument_value
+{
+    if ($next_arg < @ARGV) {
+        $_ = $ARGV [$next_arg++];
+        if (/^-/) {
+            $the_next_event = $switch_event;
+        }
+        else {
+            $_ .= $ext if !/\./;        #   Add extension if missing
+            $script = $_;
+            $the_next_event = $ok_event;
+            print "$me I: processing $script...\n";
+        }
+    }
+    else {
+        $the_next_event = $finished_event;
+    }
+}
+
+
+############################   PROCESS THE SWITCH   ###########################
+
+sub process_the_switch
+{
+    $switch_debug = 1 if $_ eq "-debug";
+}
+
+
+###########################   OPEN COMMAND SCRIPT   ###########################
+
+sub open_command_script
+{
+    #   We use an indirect filehandle, whose name is the document name.
+    #   To read from the file, we use <INPUT>
+    #
+    if (open (INPUT, $script)) {
+        $lines_read = 0;                #   Nothing processed so far
+        undef %file_is_open;            #   No output produced yet
+    }
+    else {
+        &error ("$me E: can't open $script: $!");
+        &raise_exception ($exception_event);
+    }
+}
+
+
+#   Subroutine prints an error message to the console and the ERROR file
+#
+sub error {
+    ($_) = @_;                          #   Get argument
+    print "$_\n";
+    print ERRORS "$_\n";
+    $have_errors = 1;                   #   We have 1 or more errors
+}
+
+
+##########################   GET NEXT COMMAND LINE   ##########################
+
+sub get_next_command_line
+{
+    #   Command lines ending in '-' are continued onto next line
+    #   Command line is broken into $command and $_ containing the
+    #   command arguments.
+    #
+    if ($_ = <INPUT>) {                 #   Get next line of input
+        chop while (/\s$/);             #   Remove trailing whitespace
+        $lines_read++;                  #   Count the line
+                                        #   Warn if line > LINEMAX chars long
+        if (/^#/ || /^$/) {             #   Comments or blank lines
+            $the_next_event = $ignore_event;
+        }
+        else {                          #   Action line
+            while (/-$/) {              #   Get any continuation lines
+                s/-$/ /;                #     replace hyphen by space
+                chop while (/\s$/);     #     remove trailing whitespace
+                $_ .= " ";              #     add one separating space
+                $_ .= <INPUT>;          #       and attach next line
+                chop while (/\s$/);     #     remove trailing whitespace
+            }
+            $action_line = $_;
+            /^\s*([\w!]+)(\s+(.*))?/;   #   Get first word on line
+            ($command = $1) =~ tr/[A-Z]/[a-z]/;
+            if (defined ($keyword {$command})) {
+                $the_next_event = $keyword {$command};
+                $_ = $3;                #   Get remainder of line
+            }
+            else {
+                &syntax_error;
+            }
+        }
+    }
+    else {
+        $the_next_event = $finished_event;
+    }
+}
+
+sub syntax_error {
+    &error ("$action_line");
+    &error ("$me E: ($document $.) syntax error");
+    &raise_exception ($exception_event);
+}
+
+
+###########################   OPEN NEW OUTPUT FILE   ##########################
+
+sub open_new_output_file
+{
+    #   output <system> <filename>
+    #   output $default
+    if (split == 2) {                   #   Split $_ into @_;
+        &start_output_file (@_ [0], @_ [1]);
+    }
+    elsif (/\$default/i) {
+        foreach $system (@systems) {
+            &start_output_file ($system, $default {$system});
+        }
+    }
+    else {
+        &syntax_error;
+    }
+}
+
+
+sub start_output_file {
+    local ($system, $filename) = @_;    #   Get subroutine arguments
+
+    if ($systems {$system}) {
+        #   Close any previous file if any
+        if ($file_is_open {$system}) {
+            &format_output ("footer", $system);
+            eval "close (\$out_$system)";
+        }
+        eval "\$out_$system = \"$filename\"";
+        eval "open (\$out_$system, \">$filename\")";
+        if ($@) {
+            &error ("$me E: ($document $.) cannot open $filename: $@");
+            &raise_exception ($exception_event);
+        }
+        else {
+            print "Generating $filename...\n";
+            $file_is_open {$system} = 1;
+            &format_output ("init", $system);
+            &format_output ("header", $system);
+        }
+    }
+    else {
+        &syntax_error;
+    }
+}
+
+
+#   Subroutine accepts name of block and writes each system variant
+#   to the appropriate output stream.  If $system is specified, does
+#   only that system, else does all systems in $system table.
+#
+sub format_output {
+    local ($block, $system) = @_;       #   Get subroutine arguments
+
+    if ($system) {
+        #   Translate logical extensions 1 and 2 into specific values
+        #   if necessary.  One or both of these may be blank.
+        $ext1 =~ tr/[a-z]/[A-Z]/;       #   Extensions in uppercase
+        $ext2 =~ tr/[a-z]/[A-Z]/;       #   Extensions in uppercase
+        $ext1_value = $ext {$ext1, $system};
+        $ext2_value = $ext {$ext2, $system};
+        if ($ext1 && !$ext1_value) {    #   Try base system if reqd
+            $ext1_value = $ext {$ext1, $variation {$system}};
+            $ext2_value = $ext {$ext2, $variation {$system}};
+        }
+
+        #   Redirect output to the appropriate output file.  We need to
+        #   construct the select() command and run it through eval.
+        eval "select (\$out_$system)";
+
+        #   Try system-specific command block; if this fails, see if the
+        #   system is a variation, then try the base system command block.
+        $block_sub = $block."_".$system;
+        eval "&$block_sub";
+        if ($@ && $variation {$system}) {
+            $block_sub = $block."_".$variation {$system};
+            eval "&$block_sub";
+        }
+        select (STDOUT);                #   Redirect back to stdout
+        if ($@) {
+            &error ("$me E: ($document $.) $@");
+            &raise_exception ($exception_event);
+        }
+    }
+    else {
+        foreach $system (@systems) {    #   Process each system
+            &format_output ($block, $system)
+                if $file_is_open {$system};
+        }
+    }
+}
+
+
+##########################   PROCESS APPEND COMMAND   #########################
+
+sub process_append_command
+{
+    #   append [$type] <source> [$type] <target>
+
+    &do_binary_command;
+}
+
+#   Subroutine does a simple binary command, where $command holds the
+#   command name.  Allows file type indicators in the line.
+#
+sub do_binary_command {
+    local ($index);
+
+    $words  = split;                    #   Break $_ into words
+    $index  = 0;
+    $ext1   = @_ [$index++] if (@_ [$index] =~ /\$[a-z]/i);
+    $source = @_ [$index++];
+    $ext2   = @_ [$index++] if (@_ [$index] =~ /\$[a-z]/i);
+    $target = @_ [$index++];
+
+    if ($index == $words) {
+        &format_output ("trace");
+        &format_output ("$command");
+        $ext1 = $ext2 = "";
+    }
+    else {
+        &syntax_error;
+    }
+}
+
+
+###########################   PROCESS CALL COMMAND   ##########################
+
+sub process_call_command
+{
+    #   call <script> [<arguments>]
+
+    if (/^(\w+)\s*(.+)?/) {
+        $subroutine = $1;
+        $arguments  = $2;
+
+        &format_output ("trace");
+        &format_output ("call");
+    }
+    else {
+        &syntax_error;
+    }
+}
+
+
+##########################   PROCESS CLOSE COMMAND   ##########################
+
+sub process_close_command
+{
+    &close_output_files;
+}
+
+sub close_output_files {
+    foreach $system (@systems) {        #   Close each system output file
+        if ($file_is_open {$system}) {
+            &format_output ("footer", $system);
+            eval "close (\$out_$system)";
+        }
+    }
+}
+
+
+#########################   PROCESS COMMENT COMMAND   #########################
+
+sub process_comment_command
+{
+    #   !! comment
+
+    &format_output ("comment");
+}
+
+
+#########################   PROCESS COMPILE COMMAND   #########################
+
+sub process_compile_command
+{
+    #   compile <program>...
+
+    &format_output ("trace");
+    foreach $program (split) {
+        &format_output ("compile");
+    }
+}
+
+
+###########################   PROCESS COPY COMMAND   ##########################
+
+sub process_copy_command
+{
+    #   copy [$type] <source> [$type] <target>
+
+    &do_binary_command;
+}
+
+
+##########################   PROCESS DELETE COMMAND   #########################
+
+sub process_delete_command
+{
+    #   delete [$type] <filename>...
+
+    &format_output ("trace");
+    &do_unary_command;
+}
+
+#   Subroutine does a simple unary command, where $command holds the
+#   command name.  Allows file type indicators in the line.
+#
+sub do_unary_command {
+    $words = split;                     #   Break $_ into words
+    if ($words) {
+        for ($index = 0; $index < $words; $index++) {
+            $ext1     = @_ [$index++] if (@_ [$index] =~ /\$[a-z]/i);
+            $filename = @_ [$index];
+            &format_output ($command);
+            $ext1     = "";
+        }
+    }
+    else {
+        &syntax_error;
+    }
+}
+
+
+###########################   PROCESS ECHO COMMAND   ##########################
+
+sub process_echo_command
+{
+    #   echo <text>
+
+    &format_output ("echo");
+}
+
+
+#########################   PROCESS INSTALL COMMAND   #########################
+
+sub process_install_command
+{
+    #   install <filename>...
+
+    &format_output ("trace");
+    &do_unary_command;
+}
+
+
+#########################   PROCESS LIBRARY COMMAND   #########################
+
+sub process_library_command
+{
+    #   library [<library>]
+
+    $library = $_;
+    &format_output ("trace");
+    &format_output ("library");
+}
+
+
+###########################   PROCESS LINK COMMAND   ##########################
+
+sub process_link_command
+{
+    #   link <program>...
+
+    &format_output ("trace");
+    foreach $program (split) {
+        &format_output ("link");
+    }
+}
+
+
+##########################   PROCESS PAUSE COMMAND   ##########################
+
+sub process_pause_command
+{
+    #   pause
+
+    &format_output ("pause");
+}
+
+
+##########################   PROCESS RENAME COMMAND   #########################
+
+sub process_rename_command
+{
+    #   rename [<type>] <source> [<type>] <target>
+
+    &do_binary_command;
+}
+
+
+#########################   PROCESS REQUIRE COMMAND   #########################
+
+sub process_require_command
+{
+    #   require <filename>...
+
+    &format_output ("trace");
+    &do_unary_command;
+}
+
+
+#####################   PROCESS SYSTEM SPECIFIC COMMAND   #####################
+
+sub process_system_specific_command
+{
+    #   <system> <command> <arguments>
+
+    $system = $command;                 #   Get name of system
+    if ($systems {$system}) {           #     and check if it is known
+        &format_output ("system", $system);
+    }
+    else {
+        &syntax_error;
+    }
+}
+
+##########################   PROCESS TITLE COMMAND   ##########################
+
+sub process_title_command
+{
+    #   title <text>
+
+    $title = $_;
+}
+
+
+###########################   CLOSE COMMAND SCRIPT   ##########################
+
+sub close_command_script
+{
+    close (INPUT);
+    &close_output_files;
+}
+
+
+#########################   SIGNAL SCRIPT PROCESSED   #########################
+
+sub signal_script_processed
+{
+    print "$me I: $lines_read lines processed\n";
+}
+
+
+############################   GET EXTERNAL EVENT   ###########################
+
+sub get_external_event
+{
+}
+
+
+##########################   TERMINATE THE PROGRAM    #########################
+
+sub terminate_the_program
+{
+    $the_next_event = $terminate_event;
+    close (ERRORS);
+    unlink ("otto.lst") unless ($have_errors == 1);
+}

@@ -1,0 +1,92 @@
+OTTO - By Pieter Hintjens <ph@imatix.com>                         Version 2.10
+      and Ewen McNeill <ewen@imatix.com>
+
+NAME
+
+    otto - Generate multiplatform build scripts from one source
+
+SYNOPSIS
+
+    perl -f otto inputfile...
+
+DESCRIPTION
+
+    Reads a single portable command file and generates build scripts for a
+    variety of systems.  Currently supports UNIX, MSDOS, DEC VMS, and OS/2.
+
+    Generates native UNIX, MSDOS, VMS, and OS/2 scripts from one portable
+    command script.  The command script contains one command per line, with
+    zero or more arguments.  Commands can be in any case; arguments should
+    be in the correct case, usually lower-case.  Lines starting with # and
+    blank lines are ignored.  Until you specify an OUTPUT command, nothing
+    is output.
+
+    Command:                Purpose:
+    TITLE application       Define application name for script header
+    OUTPUT system file      Create output file for system
+    OUTPUT $default         Create default output files for each system
+    !! text                 Output comment to target files
+    COMPILE filename...     Compile specified program(s)
+    COPY source target      Copy source file to target file
+    LIBRARY [filename]      Specify library for following compilations
+    LINK filename...        Link programs with default libraries
+    REQUIRE filename...     Abort if specified files do not exist
+    ECHO text               Display text on standard output
+    DELETE filename...      Delete specified files
+    RENAME source target    Rename source file to target file
+    APPEND source target    Append source file to target file
+    INSTALL filename...     Install specified files
+    CALL script args...     Invoke script with arguments
+    PAUSE                   Pause for keystroke
+    UNIX command...         Output native command in UNIX build file
+    MSDOS command...        Output native command in MSDOS build file
+    VMS command...          Output native command in VMS build file
+    OS2 command...          Output native command in OS/2 build file
+    CLOSE                   Close all output files
+
+    You can prefix a filename by one of these filetype indicators, which
+    otto will use to determine the file extension for the following 1 file:
+
+                                UNIX:   MSDOS:    VMS:
+    $LIB    Library file        .a      .lib      .olb
+    $EXE    Executable file     none    .exe      .exe
+    $OBJ    Compiled file       .o      .obj      .obj
+
+    The filetype indicator is only valid for REQUIRE, DELETE, RENAME,
+    APPEND, COPY, and INSTALL commands.
+
+SEE ALSO
+
+    Otto is supplied with a UNIX shell script called 'c' for compilation.
+    You should make this script available with your UNIX source archive.
+    The 'c' script also runs on OS/2.  A c.bat file is supplied for MSDOS.
+
+INSTALLATION
+
+    UNIX: install otto, otto.d, and otto.fmt in /usr/local/bin or some such
+    directory.  You need Perl 4.x or Perl 5.x.
+
+    MSDOS: install otto, otto.d, otto.fmt, and otto.bat in some directory
+    on your PATH, then modify otto.bat to refer to the correct location.
+
+BUGS
+
+    None that I know of.  Version 1.0 was a quick hack in Awk, version 1.6
+    moved to Perl with more control over the generated code.
+
+AUTHOR
+
+    Pieter Hintjens <ph@imatix.com>.  Version 1.0 released 17 Nov 1996.
+    Version 2.0 released 17 Feb 1997.
+    Version 2.02 released 24 Feb 1997.
+    The latest version is always available from http://www.imatix.com.
+
+COPYRIGHT
+
+    Distributed according to the GNU General Public License.  Copyright
+    (c) 1996,97 Pieter Hintjens and iMatix.
+
+PORTABILITY
+
+    Uses Perl 4.x, will run on Perl 5.x.  Portable to all Perl platforms.
+
