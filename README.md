@@ -3,7 +3,7 @@
 `otto` is an early build tool from iMatix Corporation, written in
 Perl v4.  It is implemented using a state machine, for which the
 implementation (in `otto.d`) is built using `libero` to process the
-state machin source (in `otto.l`); `otto.fmt` was written by hand
+state machine source (in `otto.l`); `otto.fmt` was written by hand
 to support the various `otto` actions on a given platform.
 
 When run, `otto` generates native build scripts for the platforms that
