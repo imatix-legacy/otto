@@ -28,7 +28,12 @@ for various early iMatix projects (see <https://github.com/imatix-legacy>).
 every made stand alone); the other files were unpacked from `otto.zip`
 for ease of reference.
 
-Released under the GNU GPL v2, a copy of which can be found in 
+Originally released under the GNU GPL v2, a copy of which can be found in
 [COPYING](COPYING).
+
+On [2016-04-29 it was also released under the
+MPLv2](https://github.com/imatix-legacy/license) ([license
+text](https://imatix-legacy.github.io/license/MPLv2.html)), so `libero` can
+be used under either GPLv2 or MPLv2.
 
 NOTE: more modern iMatix projects use other, more modern, build processes.
